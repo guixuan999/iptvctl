@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>IPTV 计划管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 10px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding: 5px 0;
+        }
+        h1 {
+            font-size: 1.3rem;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .back-btn {
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .add-btn {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #00b894, #00cec9);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 0.9rem;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .schedule-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .schedule-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .schedule-item.disabled {
+            opacity: 0.5;
+        }
+        .schedule-info {
+            flex: 1;
+        }
+        .schedule-time {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .schedule-desc {
+            font-size: 0.8rem;
+            color: #888;
+        }
+        .schedule-action {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .schedule-action.on {
+            background: rgba(0, 184, 148, 0.2);
+            color: #00b894;
+        }
+        .schedule-action.off {
+            background: rgba(225, 112, 85, 0.2);
+            color: #e17055;
+        }
+        .schedule-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .toggle-switch.active {
+            background: #00b894;
+        }
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s;
+        }
+        .toggle-switch.active::after {
+            left: 22px;
+        }
+        .edit-btn, .delete-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .edit-btn {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        .delete-btn {
+            background: rgba(225, 112, 85, 0.2);
+            color: #e17055;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #888;
+        }
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .modal.show {
+            display: flex;
+        }
+        .modal-content {
+            background: #1a1a2e;
+            border-radius: 16px;
+            padding: 20px;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .modal-title {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-label {
+            display: block;
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 6px;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .form-input, .form-select {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+        }
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: #00b894;
+        }
+        .form-select option {
+            background: #1a1a2e;
+        }
+        .weekday-selector {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .weekday-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: transparent;
+            color: #888;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .weekday-btn.selected {
+            background: #00b894;
+            border-color: #00b894;
+            color: #fff;
+        }
+        .action-selector {
+            display: flex;
+            gap: 10px;
+        }
+        .action-btn {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: transparent;
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .action-btn.selected {
+            background: rgba(0, 184, 148, 0.2);
+            border-color: #00b894;
+        }
+        .action-btn.selected.off {
+            background: rgba(225, 112, 85, 0.2);
+            border-color: #e17055;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        .modal-btn.cancel {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        .modal-btn.save {
+            background: linear-gradient(135deg, #00b894, #00cec9);
+            color: #fff;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <button class="back-btn" onclick="goBack()">← 返回</button>
+        <h1>计划管理</h1>
+        <button class="add-btn" onclick="showAddModal()">+ 添加</button>
+    </div>
+    
+    <div class="schedule-list" id="scheduleList">
+        <!-- Schedule items will be loaded here -->
+    </div>
+    
+    <!-- Add/Edit Modal -->
+    <div class="modal" id="scheduleModal">
+        <div class="modal-content">
+            <div class="modal-title" id="modalTitle">添加 Schedule</div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">小时</label>
+                    <select class="form-select" id="hourInput">
+                        <!-- 0-23 -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">分钟</label>
+                    <select class="form-select" id="minuteInput">
+                        <!-- 0-59 -->
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">星期</label>
+                <div class="weekday-selector" id="weekdaySelector">
+                    <button class="weekday-btn" data-day="1">一</button>
+                    <button class="weekday-btn" data-day="2">二</button>
+                    <button class="weekday-btn" data-day="3">三</button>
+                    <button class="weekday-btn" data-day="4">四</button>
+                    <button class="weekday-btn" data-day="5">五</button>
+                    <button class="weekday-btn" data-day="6">六</button>
+                    <button class="weekday-btn" data-day="0">日</button>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">操作</label>
+                <div class="action-selector">
+                    <button class="action-btn" data-action="off">关闭 IPTV</button>
+                    <button class="action-btn" data-action="on">开启 IPTV</button>
+                </div>
+            </div>
+            
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" onclick="hideModal()">取消</button>
+                <button class="modal-btn save" onclick="saveSchedule()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let schedules = [];
+        let editingId = null;
+        let selectedWeekdays = [];
+        let selectedAction = 'off';
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initHourMinuteOptions();
+            initWeekdayButtons();
+            initActionButtons();
+            loadSchedules();
+        });
+        
+        function initHourMinuteOptions() {
+            const hourSelect = document.getElementById('hourInput');
+            const minuteSelect = document.getElementById('minuteInput');
+            
+            for (let i = 0; i < 24; i++) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = i.toString().padStart(2, '0');
+                hourSelect.appendChild(option);
+            }
+            
+            for (let i = 0; i < 60; i += 5) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = i.toString().padStart(2, '0');
+                minuteSelect.appendChild(option);
+            }
+        }
+        
+        function initWeekdayButtons() {
+            document.querySelectorAll('.weekday-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const day = parseInt(this.dataset.day);
+                    if (this.classList.contains('selected')) {
+                        this.classList.remove('selected');
+                        selectedWeekdays = selectedWeekdays.filter(d => d !== day);
+                    } else {
+                        this.classList.add('selected');
+                        selectedWeekdays.push(day);
+                    }
+                });
+            });
+        }
+        
+        function initActionButtons() {
+            document.querySelectorAll('.action-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('selected'));
+                    this.classList.add('selected');
+                    selectedAction = this.dataset.action;
+                });
+            });
+            // 默认选中关闭
+            document.querySelector('.action-btn[data-action="off"]').classList.add('selected');
+        }
+        
+        async function loadSchedules() {
+            try {
+                const response = await fetch('/api/schedules');
+                const data = await response.json();
+                schedules = data.schedules || [];
+                renderSchedules();
+            } catch (error) {
+                console.error('Load schedules error:', error);
+            }
+        }
+        
+        function renderSchedules() {
+            const container = document.getElementById('scheduleList');
+            
+            if (schedules.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📅</div>
+                        <div>暂无 Schedule</div>
+                        <div style="font-size: 0.8rem; margin-top: 5px;">点击右上角添加</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = schedules.map(s => {
+                // 清理时间字段（去掉可能的 # 符号并转为字符串）
+                const hour = String(s.hour).replace(/^#\s*/, '').trim();
+                const minute = String(s.minute).replace(/^#\s*/, '').trim();
+                return `
+                <div class="schedule-item ${s.enabled ? '' : 'disabled'}">
+                    <div class="schedule-info">
+                        <div class="schedule-time">
+                            ${hour}:${minute.padStart(2, '0')}
+                            <span class="schedule-action ${s.action}">${s.action === 'on' ? '开启' : '关闭'}</span>
+                        </div>
+                        <div class="schedule-desc">${formatWeekday(s.weekday)}</div>
+                    </div>
+                    <div class="schedule-controls">
+                        <div class="toggle-switch ${s.enabled ? 'active' : ''}" onclick="toggleSchedule(${s.id})"></div>
+                        <button class="edit-btn" onclick="editSchedule(${s.id})">编辑</button>
+                        <button class="delete-btn" onclick="deleteSchedule(${s.id})">删除</button>
+                    </div>
+                </div>
+            `}).join('');
+        }
+        
+        function formatWeekday(weekday) {
+            if (weekday === '*') return '每天';
+            const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+            const days = weekday.split(',').map(d => {
+                if (d.includes('-')) {
+                    const [start, end] = d.split('-');
+                    return `周${dayNames[parseInt(start)]}-周${dayNames[parseInt(end)]}`;
+                }
+                return `周${dayNames[parseInt(d)]}`;
+            });
+            return days.join(', ');
+        }
+        
+        function showAddModal() {
+            editingId = null;
+            document.getElementById('modalTitle').textContent = '添加 Schedule';
+            document.getElementById('hourInput').value = '17';
+            document.getElementById('minuteInput').value = '0';
+            selectedWeekdays = [];
+            document.querySelectorAll('.weekday-btn').forEach(b => b.classList.remove('selected'));
+            selectedAction = 'off';
+            document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('selected'));
+            document.querySelector('.action-btn[data-action="off"]').classList.add('selected');
+            document.getElementById('scheduleModal').classList.add('show');
+        }
+        
+        function editSchedule(id) {
+            const s = schedules.find(x => x.id === id);
+            if (!s) return;
+            
+            editingId = id;
+            document.getElementById('modalTitle').textContent = '编辑 Schedule';
+            document.getElementById('hourInput').value = parseInt(s.hour);
+            document.getElementById('minuteInput').value = parseInt(s.minute);
+            
+            // 设置星期
+            selectedWeekdays = parseWeekdayList(s.weekday);
+            document.querySelectorAll('.weekday-btn').forEach(btn => {
+                const day = parseInt(btn.dataset.day);
+                if (selectedWeekdays.includes(day)) {
+                    btn.classList.add('selected');
+                } else {
+                    btn.classList.remove('selected');
+                }
+            });
+            
+            // 设置操作
+            selectedAction = s.action;
+            document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('selected'));
+            document.querySelector(`.action-btn[data-action="${s.action}"]`).classList.add('selected');
+            
+            document.getElementById('scheduleModal').classList.add('show');
+        }
+        
+        function parseWeekdayList(weekday) {
+            if (weekday === '*') return [0, 1, 2, 3, 4, 5, 6];
+            const days = [];
+            weekday.split(',').forEach(part => {
+                if (part.includes('-')) {
+                    const [start, end] = part.split('-').map(Number);
+                    for (let i = start; i <= end; i++) days.push(i);
+                } else {
+                    days.push(parseInt(part));
+                }
+            });
+            return days;
+        }
+        
+        function hideModal() {
+            document.getElementById('scheduleModal').classList.remove('show');
+        }
+        
+        async function saveSchedule() {
+            const hour = document.getElementById('hourInput').value;
+            const minute = document.getElementById('minuteInput').value;
+            
+            if (selectedWeekdays.length === 0) {
+                alert('请选择星期');
+                return;
+            }
+            
+            // 排序并格式化 weekday
+            selectedWeekdays.sort((a, b) => a - b);
+            let weekday;
+            if (selectedWeekdays.length === 7) {
+                weekday = '*';
+            } else {
+                weekday = selectedWeekdays.join(',');
+            }
+            
+            const schedule = {
+                hour: hour,
+                minute: minute,
+                day: '*',
+                month: '*',
+                weekday: weekday,
+                action: selectedAction,
+                enabled: true
+            };
+            
+            try {
+                let url = '/api/schedules';
+                let method = 'POST';
+                
+                if (editingId) {
+                    url = `/api/schedules/${editingId}`;
+                    method = 'PUT';
+                }
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(schedule)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    hideModal();
+                    loadSchedules();
+                } else {
+                    alert(data.error || '保存失败');
+                }
+            } catch (error) {
+                alert('网络错误');
+            }
+        }
+        
+        async function toggleSchedule(id) {
+            try {
+                const response = await fetch(`/api/schedules/${id}/toggle`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    loadSchedules();
+                }
+            } catch (error) {
+                console.error('Toggle error:', error);
+            }
+        }
+        
+        async function deleteSchedule(id) {
+            if (!confirm('确定要删除这个 schedule 吗？')) return;
+            
+            try {
+                const response = await fetch(`/api/schedules/${id}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    loadSchedules();
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+            }
+        }
+        
+        function goBack() {
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
