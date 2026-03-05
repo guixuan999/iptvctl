@@ -14,8 +14,8 @@ app = Flask(__name__)
 
 # iptv 命令配置 - 直接执行系统命令
 IPTV_COMMANDS = {
-    'on': ['sudo', 'ip', 'link', 'set', 'eth3', 'up'],
-    'off': ['sudo', 'ip', 'link', 'set', 'eth3', 'down']
+    'on': ['ip', 'link', 'set', 'eth3', 'up'],
+    'off': ['ip', 'link', 'set', 'eth3', 'down']
 }
 
 # 定时关闭任务管理
