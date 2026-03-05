@@ -39,6 +39,11 @@
             margin-bottom: 15px;
             font-size: 0.8rem;
         }
+        .hostname {
+            color: #666;
+            font-size: 0.75rem;
+            margin-left: 5px;
+        }
         .main-status {
             margin-bottom: 15px;
         }
@@ -483,7 +488,7 @@
 <body>
     <div class="container">
         <h1>📺 IPTV 控制器</h1>
-        <p class="subtitle">家庭电视远程控制</p>
+        <p class="subtitle">家庭电视远程控制 <span id="hostname" class="hostname"></span></p>
         
         <div class="main-status">
             <div class="status-card unknown" id="statusCard">
@@ -567,8 +572,17 @@
                 updateStatusDisplay(data.status);
                 updateTimerDisplay(data.timer_remaining);
                 updateNextSchedules(data.next_schedules, data.skip_crontab);
+                updateHostname(data.hostname);
             } catch (error) {
                 updateStatusDisplay('unknown');
+            }
+        }
+        
+        // 更新主机名显示
+        function updateHostname(hostname) {
+            const el = document.getElementById('hostname');
+            if (el && hostname) {
+                el.textContent = `(${hostname})`;
             }
         }
         

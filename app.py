@@ -18,6 +18,14 @@ IPTV_COMMANDS = {
     'off': ['ip', 'link', 'set', 'eth3', 'down']
 }
 
+def get_hostname():
+    """获取主机名"""
+    try:
+        with open('/proc/sys/kernel/hostname', 'r') as f:
+            return f.read().strip()
+    except Exception:
+        return 'unknown'
+
 # 定时关闭任务管理
 timer_thread = None
 timer_end_time = None
@@ -269,7 +277,8 @@ def iptv_current_status():
         'status': status,
         'timer_remaining': timer_remaining,
         'next_schedules': next_schedules,
-        'skip_crontab': should_skip_crontab_off()
+        'skip_crontab': should_skip_crontab_off(),
+        'hostname': get_hostname()
     })
 
 @app.route('/api/iptv/timer/<int:minutes>')
