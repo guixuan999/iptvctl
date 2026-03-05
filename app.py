@@ -14,8 +14,8 @@ app = Flask(__name__)
 
 # iptv 命令配置 - 直接执行系统命令
 IPTV_COMMANDS = {
-    'on': ['sudo', 'ip', 'link', 'set', 'ens1', 'up'],
-    'off': ['sudo', 'ip', 'link', 'set', 'ens1', 'down']
+    'on': ['sudo', 'ip', 'link', 'set', 'eth3', 'up'],
+    'off': ['sudo', 'ip', 'link', 'set', 'eth3', 'down']
 }
 
 # 定时关闭任务管理
@@ -48,9 +48,9 @@ def get_timer_logs():
 def run_status_command():
     """执行 status 命令（组合命令）"""
     try:
-        # 执行 ip link show ens1
+        # 执行 ip link show eth3
         result1 = subprocess.run(
-            ['ip', 'link', 'show', 'ens1'],
+            ['ip', 'link', 'show', 'eth3'],
             capture_output=True,
             text=True,
             timeout=30
@@ -126,11 +126,11 @@ def run_command(cmd):
 def parse_iptv_status(output):
     """
     解析 iptv-status 输出，判断 IPTV 状态
-    ON: ens1 包含 <...UP...>
-    OFF: ens1 不包含 UP
+    ON: eth3 包含 <...UP...>
+    OFF: eth3 不包含 UP
     """
     for line in output.split('\n'):
-        if 'ens1:' in line:
+        if 'eth3:' in line:
             if 'UP' in line:
                 return 'on'
             else:
@@ -357,7 +357,7 @@ def create_schedule():
     
     # 构建命令（关闭操作会使用检查脚本）
     if schedule['action'] == 'on':
-        schedule['command'] = '/sbin/ip link set ens1 up && /usr/bin/logger "IPTV RESTORED: web schedule"'
+        schedule['command'] = '/sbin/ip link set eth3 up && /usr/bin/logger "IPTV RESTORED: web schedule"'
     else:
         import os
         script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'check_and_off.sh')

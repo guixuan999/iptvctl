@@ -12,5 +12,5 @@ if [ -f /tmp/iptv_manual_timer ]; then
 fi
 
 # 执行关闭
-/sbin/ip link set ens1 down
+/sbin/ip link set eth3 down
 /usr/bin/logger "IPTV BLOCKED: by schedule"

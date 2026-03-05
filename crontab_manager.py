@@ -46,7 +46,7 @@ def set_crontab(content):
 
 
 def extract_iptv_schedules(crontab_content):
-    """从 crontab 内容中提取 IPTV schedule（读取所有包含 ip link set ens1 或 check_and_off.sh 的规则）"""
+    """从 crontab 内容中提取 IPTV schedule（读取所有包含 ip link set eth3 或 check_and_off.sh 的规则）"""
     schedules = []
     
     for line in crontab_content.split('\n'):
@@ -57,7 +57,7 @@ def extract_iptv_schedules(crontab_content):
         
         # 检查是否包含 IPTV 相关命令（包括开启、关闭和检查脚本）
         clean_line = line.replace('#', '').strip()
-        if 'ip link set ens1' in line or 'ip link set ens1' in clean_line or \
+        if 'ip link set eth3' in line or 'ip link set eth3' in clean_line or \
            'check_and_off.sh' in line or 'check_and_off.sh' in clean_line:
             schedule = parse_crontab_line(line)
             if schedule:
@@ -69,8 +69,8 @@ def extract_iptv_schedules(crontab_content):
 def parse_crontab_line(line):
     """解析单行 crontab 条目"""
     # 格式: m h dom mon dow command
-    # 示例: 0 17 * * 1-5 /sbin/ip link set ens1 down
-    # 被禁用的: # 0 17 * * 1-5 /sbin/ip link set ens1 down
+    # 示例: 0 17 * * 1-5 /sbin/ip link set eth3 down
+    # 被禁用的: # 0 17 * * 1-5 /sbin/ip link set eth3 down
     
     # 检查是否被禁用（前面有 #）
     enabled = not line.strip().startswith('#')
@@ -118,7 +118,7 @@ def build_crontab_line(schedule):
         script_path = os.path.join(get_script_dir(), 'check_and_off.sh')
         command = script_path
     else:
-        command = schedule.get('command', '/sbin/ip link set ens1 up')
+        command = schedule.get('command', '/sbin/ip link set eth3 up')
     
     line = f"{schedule['minute']} {schedule['hour']} {schedule['day']} {schedule['month']} {schedule['weekday']} {command}"
     if not schedule.get('enabled', True):
@@ -206,7 +206,7 @@ def update_schedule(schedule_id, updates):
     
     # 构建命令（关闭操作会使用检查脚本）
     if new_schedule['action'] == 'on':
-        new_schedule['command'] = '/sbin/ip link set ens1 up && /usr/bin/logger "IPTV RESTORED: manual schedule"'
+        new_schedule['command'] = '/sbin/ip link set eth3 up && /usr/bin/logger "IPTV RESTORED: manual schedule"'
     else:
         script_path = os.path.join(get_script_dir(), 'check_and_off.sh')
         new_schedule['command'] = script_path
