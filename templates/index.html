@@ -409,6 +409,10 @@
         .log-table .col-action {
             color: #74b9ff;
         }
+        .log-table .col-action.ongoing {
+            color: #00b894;
+            font-weight: bold;
+        }
         .pagination {
             display: flex;
             justify-content: center;
@@ -549,8 +553,9 @@
                     <thead>
                         <tr>
                             <th>序号</th>
-                            <th>时间</th>
-                            <th>操作</th>
+                            <th>开始时间</th>
+                            <th>结束时间</th>
+                            <th>时长</th>
                         </tr>
                     </thead>
                     <tbody id="logTableBody"></tbody>
@@ -654,12 +659,63 @@
         
         // 解析日志条目
         function parseLogEntry(log) {
-            // 格式: "2025-02-26 13:50:00 - 开启 10 分钟"
-            const match = log.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) - (.+)$/);
+            // 格式: "2025-02-26 13:50:00 - START" 或 "2025-02-26 13:50:00 - STOP"
+            const match = log.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) - (START|STOP)$/);
             if (match) {
                 return { date: match[1], time: match[2], action: match[3] };
             }
-            return { date: '', time: log, action: '' };
+            return null;
+        }
+        
+        // 将日志配对成观看记录
+        function pairLogs(logs) {
+            const pairs = [];
+            let currentStart = null;
+            
+            for (const log of logs) {
+                const parsed = parseLogEntry(log);
+                if (!parsed) continue;
+                
+                if (parsed.action === 'START') {
+                    currentStart = parsed;
+                } else if (parsed.action === 'STOP' && currentStart) {
+                    pairs.push({
+                        startDate: currentStart.date,
+                        startTime: currentStart.time,
+                        stopDate: parsed.date,
+                        stopTime: parsed.time,
+                        duration: calculateDuration(currentStart, parsed)
+                    });
+                    currentStart = null;
+                }
+            }
+            
+            // 如果有未配对的 START，说明还在观看中
+            if (currentStart) {
+                const now = new Date();
+                const nowStr = {
+                    date: now.toISOString().split('T')[0],
+                    time: now.toTimeString().slice(0, 8)
+                };
+                pairs.push({
+                    startDate: currentStart.date,
+                    startTime: currentStart.time,
+                    stopDate: nowStr.date,
+                    stopTime: nowStr.time,
+                    duration: calculateDuration(currentStart, nowStr),
+                    ongoing: true
+                });
+            }
+            
+            return pairs.reverse(); // 最新的在前面
+        }
+        
+        // 计算观看时长（分钟）
+        function calculateDuration(start, stop) {
+            const startDt = new Date(`${start.date}T${start.time}`);
+            const stopDt = new Date(`${stop.date}T${stop.time}`);
+            const diffMs = stopDt - startDt;
+            return Math.round(diffMs / 1000 / 60);
         }
         
         // 格式化日期显示（今天/昨天/原样）
@@ -683,24 +739,6 @@
             }
         }
         
-        // 从操作字符串中提取分钟数
-        function extractMinutes(action) {
-            const match = action.match(/开启 (\d+) 分钟/);
-            return match ? parseInt(match[1]) : 0;
-        }
-        
-        // 计算筛选日期的总分钟数
-        function calculateTotalMinutes(dateStr) {
-            let total = 0;
-            logData.forEach(log => {
-                const parsed = parseLogEntry(log);
-                if (parsed.date === dateStr) {
-                    total += extractMinutes(parsed.action);
-                }
-            });
-            return total;
-        }
-        
         // 筛选日志
         function filterLogsByDate() {
             const dateFilter = document.getElementById('logDateFilter').value;
@@ -709,18 +747,17 @@
                 return;
             }
             
-            // 筛选数据
+            // 筛选数据（根据开始日期）
             filteredLogData = logData.filter(log => {
-                const parsed = parseLogEntry(log);
-                return parsed.date === dateFilter;
+                return log.date === dateFilter;
             });
             
             currentPage = 1;
             
             // 计算并显示统计
-            const totalMinutes = calculateTotalMinutes(dateFilter);
+            const totalMinutes = filteredLogData.reduce((sum, log) => sum + log.duration, 0);
             const statsDiv = document.getElementById('logStats');
-            statsDiv.textContent = `${dateFilter} 共开启 ${totalMinutes} 分钟`;
+            statsDiv.textContent = `${dateFilter} 共观看 ${totalMinutes} 分钟`;
             statsDiv.classList.remove('hidden');
             
             renderFilteredLogTable();
@@ -761,16 +798,15 @@
             const pageData = filteredLogData.slice(start, end);
             
             // 渲染表格行
-            tbody.innerHTML = pageData.map((log, index) => {
-                const parsed = parseLogEntry(log);
-                const num = start + index + 1;
-                const dateDisplay = formatLogDate(parsed.date);
-                const timeDisplay = parsed.time;
+            tbody.innerHTML = pageData.map((log) => {
+                const dateDisplay = formatLogDate(log.date);
+                const durationClass = log.ongoing ? 'ongoing' : '';
                 return `
                     <tr>
-                        <td class="col-num">${num}</td>
-                        <td class="col-time">${dateDisplay} ${timeDisplay}</td>
-                        <td class="col-action">${parsed.action}</td>
+                        <td class="col-num">${log.index}</td>
+                        <td class="col-time">${dateDisplay} ${log.startTime}</td>
+                        <td class="col-time">${log.stopTime}</td>
+                        <td class="col-action ${durationClass}">${log.duration} 分钟</td>
                     </tr>
                 `;
             }).join('');
@@ -831,16 +867,15 @@
             const pageData = logData.slice(start, end);
             
             // 渲染表格行
-            tbody.innerHTML = pageData.map((log, index) => {
-                const parsed = parseLogEntry(log);
-                const num = start + index + 1;
-                const dateDisplay = formatLogDate(parsed.date);
-                const timeDisplay = parsed.time;
+            tbody.innerHTML = pageData.map((log) => {
+                const dateDisplay = formatLogDate(log.date);
+                const durationClass = log.ongoing ? 'ongoing' : '';
                 return `
                     <tr>
-                        <td class="col-num">${num}</td>
-                        <td class="col-time">${dateDisplay} ${timeDisplay}</td>
-                        <td class="col-action">${parsed.action}</td>
+                        <td class="col-num">${log.index}</td>
+                        <td class="col-time">${dateDisplay} ${log.startTime}</td>
+                        <td class="col-time">${log.stopTime}</td>
+                        <td class="col-action ${durationClass}">${log.duration} 分钟</td>
                     </tr>
                 `;
             }).join('');
@@ -881,15 +916,24 @@
             const tbody = document.getElementById('logTableBody');
             
             modal.style.display = 'flex';
-            tbody.innerHTML = '<tr><td colspan="3" class="log-empty">加载中...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="log-empty">加载中...</td></tr>';
             
             try {
                 const response = await fetch('/api/iptv/logs');
                 const data = await response.json();
                 
                 if (data.logs && data.logs.length > 0) {
-                    // 倒序存储，最新的在前面
-                    logData = [...data.logs].reverse();
+                    // 将原始日志配对成观看记录
+                    const pairedLogs = pairLogs(data.logs);
+                    // 转换为显示格式
+                    logData = pairedLogs.map((p, idx) => ({
+                        index: pairedLogs.length - idx,
+                        date: p.startDate,
+                        startTime: p.startTime,
+                        stopTime: p.ongoing ? p.stopTime + ' (观看中)' : p.stopTime,
+                        duration: p.duration,
+                        ongoing: p.ongoing
+                    }));
                     currentPage = 1;
                     renderLogTable();
                 } else {

@@ -29,16 +29,26 @@ def get_hostname():
 # 定时关闭任务管理
 timer_thread = None
 timer_end_time = None
+timer_stop_flag = False  # 用于停止旧线程的标志
 
 # 日志文件路径
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'timer_log.txt')
 
-def log_timer_action(minutes):
-    """记录定时开启日志"""
+def log_timer_start():
+    """记录定时开启的实际开始时间"""
     try:
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
         with open(LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(f"{timestamp} - 开启 {minutes} 分钟\n")
+            f.write(f"{timestamp} - START\n")
+    except Exception as e:
+        print(f"写入日志失败: {e}")
+
+def log_timer_stop():
+    """记录定时关闭的实际时间"""
+    try:
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(f"{timestamp} - STOP\n")
     except Exception as e:
         print(f"写入日志失败: {e}")
 
@@ -158,13 +168,16 @@ def get_current_status():
 
 def delayed_on_off(minutes):
     """立即开启 IPTV，在指定分钟后关闭"""
-    global timer_end_time
+    global timer_end_time, timer_stop_flag
+    
+    # 重置停止标志
+    timer_stop_flag = False
     
     # 先执行开启
     run_command(IPTV_COMMANDS['on'])
     
-    # 记录日志
-    log_timer_action(minutes)
+    # 记录实际开启时间
+    log_timer_start()
     
     # 设置定时关闭时间
     timer_end_time = time.time() + minutes * 60
@@ -176,12 +189,25 @@ def delayed_on_off(minutes):
     except:
         pass
     
-    # 等待指定时间
-    time.sleep(minutes * 60)
+    # 等待指定时间（每秒检查一次停止标志）
+    total_seconds = minutes * 60
+    for _ in range(total_seconds):
+        if timer_stop_flag:
+            # 被停止，不执行关闭
+            timer_end_time = None
+            try:
+                os.remove('/tmp/iptv_manual_timer')
+            except:
+                pass
+            return
+        time.sleep(1)
     
     # 时间到了，执行关闭
     run_command(IPTV_COMMANDS['off'])
     timer_end_time = None
+    
+    # 记录实际关闭时间
+    log_timer_stop()
     
     # 删除标志文件
     try:
@@ -204,7 +230,7 @@ def get_timer_status():
 
 def cancel_timer():
     """取消定时关闭"""
-    global timer_thread, timer_end_time
+    global timer_thread, timer_end_time, timer_stop_flag
     
     # 删除标志文件
     try:
@@ -213,7 +239,8 @@ def cancel_timer():
         pass
     
     if timer_thread and timer_thread.is_alive():
-        # 无法真正终止线程，但可以将结束时间设为过去
+        timer_stop_flag = True  # 通知线程停止
+        timer_thread.join(timeout=2)  # 等待线程结束（最多2秒）
         timer_end_time = None
         return True
     timer_end_time = None
@@ -284,13 +311,15 @@ def iptv_current_status():
 @app.route('/api/iptv/timer/<int:minutes>')
 def set_timer(minutes):
     """设置开启后定时关闭"""
-    global timer_thread, timer_end_time
+    global timer_thread, timer_end_time, timer_stop_flag
     
     if minutes <= 0:
         return jsonify({'error': 'Invalid minutes'}), 400
     
     # 取消之前的定时器
     if timer_thread and timer_thread.is_alive():
+        timer_stop_flag = True  # 通知旧线程停止
+        timer_thread.join(timeout=2)  # 等待旧线程结束（最多2秒）
         timer_end_time = None
     
     # 创建新的定时器线程（先开启，后关闭）
