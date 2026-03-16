@@ -677,7 +677,10 @@
                 if (!parsed) continue;
                 
                 if (parsed.action === 'START') {
-                    currentStart = parsed;
+                    // 如果已经有 START 了，忽略后续的 START（取第一个）
+                    if (!currentStart) {
+                        currentStart = parsed;
+                    }
                 } else if (parsed.action === 'STOP' && currentStart) {
                     pairs.push({
                         startDate: currentStart.date,
