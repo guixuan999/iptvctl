@@ -550,7 +550,7 @@
                 let url = '/api/schedules';
                 let method = 'POST';
                 
-                if (editingId) {
+                if (editingId !== null) {
                     url = `/api/schedules/${editingId}`;
                     method = 'PUT';
                 }
@@ -564,12 +564,13 @@
                 const data = await response.json();
                 if (data.success) {
                     hideModal();
-                    loadSchedules();
+                    await loadSchedules();
                 } else {
                     alert(data.error || '保存失败');
                 }
             } catch (error) {
-                alert('网络错误');
+                console.error('Save schedule error:', error);
+                alert('保存失败，请检查服务日志');
             }
         }
         
@@ -580,10 +581,13 @@
                 });
                 const data = await response.json();
                 if (data.success) {
-                    loadSchedules();
+                    await loadSchedules();
+                } else {
+                    alert(data.error || '切换失败');
                 }
             } catch (error) {
                 console.error('Toggle error:', error);
+                alert('切换失败，请检查服务日志');
             }
         }
         
@@ -596,10 +600,13 @@
                 });
                 const data = await response.json();
                 if (data.success) {
-                    loadSchedules();
+                    await loadSchedules();
+                } else {
+                    alert(data.error || '删除失败');
                 }
             } catch (error) {
                 console.error('Delete error:', error);
+                alert('删除失败，请检查服务日志');
             }
         }
         
