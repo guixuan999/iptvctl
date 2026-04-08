@@ -106,12 +106,13 @@ def extract_iptv_schedules(crontab_content):
     _, managed_lines, _, _ = split_crontab_sections(crontab_content)
 
     for line in managed_lines:
-        line = line.strip()
-        if not line:
+        stripped_line = line.strip()
+        if not stripped_line:
             continue
 
-        schedule = parse_crontab_line(line)
+        schedule = parse_crontab_line(stripped_line)
         if schedule:
+            schedule['raw'] = line
             schedules.append(schedule)
     
     return schedules
@@ -223,7 +224,18 @@ def delete_schedule(schedule_id):
         return False
     
     _, managed_lines, _, _ = split_crontab_sections(crontab)
-    new_managed_lines = [line for line in managed_lines if line != target['raw']]
+    new_managed_lines = []
+    deleted = False
+    for line in managed_lines:
+        parsed = parse_crontab_line(line.strip())
+        if not deleted and parsed and parsed['id'] == schedule_id:
+            deleted = True
+            continue
+        new_managed_lines.append(line)
+
+    if not deleted:
+        return False
+
     return set_crontab(replace_managed_block(crontab, new_managed_lines))
 
 
@@ -279,7 +291,19 @@ def toggle_schedule(schedule_id):
             new_line = old_line
 
     _, managed_lines, _, _ = split_crontab_sections(crontab)
-    replaced = [new_line if line == old_line else line for line in managed_lines]
+    replaced = []
+    toggled = False
+    for line in managed_lines:
+        parsed = parse_crontab_line(line.strip())
+        if not toggled and parsed and parsed['id'] == schedule_id:
+            replaced.append(new_line)
+            toggled = True
+        else:
+            replaced.append(line)
+
+    if not toggled:
+        return False
+
     return set_crontab(replace_managed_block(crontab, replaced))
 
 

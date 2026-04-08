@@ -258,7 +258,7 @@ def iptv_control(action):
             result['iptv_state'] = parse_iptv_status(result['stdout'])
         return jsonify(result)
     
-    if action not in IPTV_COMMANDS:
+    if action not in CONFIG.iptv_commands:
         return jsonify({'error': 'Invalid action'}), 400
     
     # 如果是关闭操作，先取消定时任务
