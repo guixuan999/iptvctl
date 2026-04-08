@@ -424,6 +424,7 @@
             }
             
             container.innerHTML = schedules.map(s => {
+                const safeId = JSON.stringify(String(s.id));
                 // 清理时间字段（去掉可能的 # 符号并转为字符串）
                 const hour = String(s.hour).replace(/^#\s*/, '').trim();
                 const minute = String(s.minute).replace(/^#\s*/, '').trim();
@@ -437,9 +438,9 @@
                         <div class="schedule-desc">${formatWeekday(s.weekday)}</div>
                     </div>
                     <div class="schedule-controls">
-                        <div class="toggle-switch ${s.enabled ? 'active' : ''}" onclick="toggleSchedule(${s.id})"></div>
-                        <button class="edit-btn" onclick="editSchedule(${s.id})">编辑</button>
-                        <button class="delete-btn" onclick="deleteSchedule(${s.id})">删除</button>
+                        <div class="toggle-switch ${s.enabled ? 'active' : ''}" onclick='toggleSchedule(${safeId})'></div>
+                        <button class="edit-btn" onclick='editSchedule(${safeId})'>编辑</button>
+                        <button class="delete-btn" onclick='deleteSchedule(${safeId})'>删除</button>
                     </div>
                 </div>
             `}).join('');
@@ -472,7 +473,7 @@
         }
         
         function editSchedule(id) {
-            const s = schedules.find(x => x.id === id);
+            const s = schedules.find(x => String(x.id) === String(id));
             if (!s) return;
             
             editingId = id;

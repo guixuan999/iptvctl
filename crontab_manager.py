@@ -159,8 +159,7 @@ def parse_crontab_line(line):
 
 
 def stable_schedule_id(line):
-    digest = hashlib.sha1(line.encode('utf-8')).hexdigest()[:12]
-    return int(digest, 16)
+    return hashlib.sha1(line.encode('utf-8')).hexdigest()[:12]
 
 
 def build_crontab_line(schedule):
@@ -177,25 +176,20 @@ def build_crontab_line(schedule):
 
 
 def get_all_schedules():
-    """获取所有 IPTV schedules，按下次执行时间排序"""
+    """获取所有 IPTV schedules，按当天操作时间排序"""
     crontab = get_crontab()
     schedules = extract_iptv_schedules(crontab)
-    
-    # 计算每个 schedule 的下次执行时间并排序
-    now = datetime.now()
-    
-    def sort_key(s):
+
+    def sort_key(schedule):
         try:
-            # 计算下次执行时间
-            next_run = calculate_next_run(s, now)
-            if next_run:
-                return next_run
-            else:
-                # 如果无法计算（比如没有匹配的 weekday），放到最后
-                return datetime.max
-        except (ValueError, TypeError, Exception):
-            return datetime.max
-    
+            return (
+                int(str(schedule['hour']).strip()),
+                int(str(schedule['minute']).strip()),
+                0 if schedule.get('action') == 'on' else 1,
+            )
+        except (ValueError, TypeError):
+            return (99, 99, 99)
+
     schedules.sort(key=sort_key)
     return schedules
 

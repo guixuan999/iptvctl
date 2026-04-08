@@ -161,7 +161,10 @@ def get_timer_status():
 
 def cancel_timer():
     """取消定时关闭"""
-    return timer_manager.cancel()
+    cancelled = timer_manager.cancel()
+    if cancelled:
+        log_timer_stop()
+    return cancelled
 
 def should_skip_crontab_off():
     """
@@ -302,7 +305,7 @@ def create_schedule():
     else:
         return jsonify({'success': False, 'error': '添加失败'}), 500
 
-@app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
+@app.route('/api/schedules/<schedule_id>', methods=['PUT'])
 def update_schedule_api(schedule_id):
     """更新 schedule"""
     data = request.get_json()
@@ -322,7 +325,7 @@ def update_schedule_api(schedule_id):
     else:
         return jsonify({'success': False, 'error': '更新失败'}), 500
 
-@app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
+@app.route('/api/schedules/<schedule_id>', methods=['DELETE'])
 def delete_schedule_api(schedule_id):
     """删除 schedule"""
     if delete_schedule(schedule_id):
@@ -330,7 +333,7 @@ def delete_schedule_api(schedule_id):
     else:
         return jsonify({'success': False, 'error': '删除失败'}), 500
 
-@app.route('/api/schedules/<int:schedule_id>/toggle', methods=['POST'])
+@app.route('/api/schedules/<schedule_id>/toggle', methods=['POST'])
 def toggle_schedule_api(schedule_id):
     """切换 schedule 使能状态"""
     if toggle_schedule(schedule_id):
