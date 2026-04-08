@@ -2,8 +2,8 @@ from flask import Flask, render_template, jsonify, request
 import subprocess
 import time
 from crontab_manager import (
-    get_all_schedules, add_schedule, delete_schedule, 
-    update_schedule, toggle_schedule, get_next_schedules
+    get_all_schedules, add_schedule, delete_schedule,
+    update_schedule, toggle_schedule, get_next_schedules, get_last_error
 )
 from settings import CONFIG
 from timer_manager import TimerManager
@@ -303,7 +303,7 @@ def create_schedule():
     if add_schedule(schedule):
         return jsonify({'success': True})
     else:
-        return jsonify({'success': False, 'error': '添加失败'}), 500
+        return jsonify({'success': False, 'error': get_last_error() or '添加失败'}), 500
 
 @app.route('/api/schedules/<schedule_id>', methods=['PUT'])
 def update_schedule_api(schedule_id):
@@ -323,7 +323,7 @@ def update_schedule_api(schedule_id):
     if update_schedule(schedule_id, updates):
         return jsonify({'success': True})
     else:
-        return jsonify({'success': False, 'error': '更新失败'}), 500
+        return jsonify({'success': False, 'error': get_last_error() or '更新失败'}), 500
 
 @app.route('/api/schedules/<schedule_id>', methods=['DELETE'])
 def delete_schedule_api(schedule_id):
@@ -331,7 +331,7 @@ def delete_schedule_api(schedule_id):
     if delete_schedule(schedule_id):
         return jsonify({'success': True})
     else:
-        return jsonify({'success': False, 'error': '删除失败'}), 500
+        return jsonify({'success': False, 'error': get_last_error() or '删除失败'}), 500
 
 @app.route('/api/schedules/<schedule_id>/toggle', methods=['POST'])
 def toggle_schedule_api(schedule_id):
@@ -339,7 +339,7 @@ def toggle_schedule_api(schedule_id):
     if toggle_schedule(schedule_id):
         return jsonify({'success': True})
     else:
-        return jsonify({'success': False, 'error': '切换失败'}), 500
+        return jsonify({'success': False, 'error': get_last_error() or '切换失败'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -7,6 +7,16 @@ from settings import CONFIG
 
 CRONTAB_MARKER_START = CONFIG.crontab_marker_start
 CRONTAB_MARKER_END = CONFIG.crontab_marker_end
+LAST_ERROR = None
+
+
+def set_last_error(message):
+    global LAST_ERROR
+    LAST_ERROR = message
+
+
+def get_last_error():
+    return LAST_ERROR
 
 
 def get_crontab():
@@ -19,9 +29,12 @@ def get_crontab():
             timeout=10
         )
         if result.returncode == 0:
+            set_last_error(None)
             return result.stdout
+        set_last_error(result.stderr.strip() or "读取 crontab 失败")
         return ""
-    except Exception:
+    except Exception as e:
+        set_last_error(str(e))
         return ""
 
 
@@ -37,8 +50,13 @@ def set_crontab(content):
             text=True
         )
         stdout, stderr = proc.communicate(input=content, timeout=10)
-        return proc.returncode == 0
+        if proc.returncode == 0:
+            set_last_error(None)
+            return True
+        set_last_error(stderr.strip() or "写入 crontab 失败")
+        return False
     except Exception as e:
+        set_last_error(str(e))
         print(f"Set crontab error: {e}")
         return False
 
