@@ -2,7 +2,6 @@
 Crontab 管理模块 - 用于管理 IPTV 的定时开关规则
 """
 import subprocess
-import hashlib
 from datetime import datetime, timedelta
 from settings import CONFIG
 
@@ -105,13 +104,14 @@ def extract_iptv_schedules(crontab_content):
 
     _, managed_lines, _, _ = split_crontab_sections(crontab_content)
 
-    for line in managed_lines:
+    for index, line in enumerate(managed_lines):
         stripped_line = line.strip()
         if not stripped_line:
             continue
 
         schedule = parse_crontab_line(stripped_line)
         if schedule:
+            schedule['id'] = str(index)
             schedule['raw'] = line
             schedules.append(schedule)
     
@@ -145,7 +145,7 @@ def parse_crontab_line(line):
         action = 'off'
     
     return {
-        'id': stable_schedule_id(clean_line),
+        'id': None,
         'minute': minute,
         'hour': hour,
         'day': day,
@@ -156,12 +156,6 @@ def parse_crontab_line(line):
         'enabled': enabled,
         'raw': line
     }
-
-
-def stable_schedule_id(line):
-    return hashlib.sha1(line.encode('utf-8')).hexdigest()[:12]
-
-
 def build_crontab_line(schedule):
     """从 schedule 字典构建 crontab 行"""
     if schedule.get('action') == 'off':
@@ -176,19 +170,24 @@ def build_crontab_line(schedule):
 
 
 def get_all_schedules():
-    """获取所有 IPTV schedules，按当天操作时间排序"""
+    """获取所有 IPTV schedules，按今天优先和当天时刻排序"""
     crontab = get_crontab()
     schedules = extract_iptv_schedules(crontab)
+    today = datetime.now().weekday()
 
     def sort_key(schedule):
         try:
+            weekdays = parse_weekday(schedule['weekday'])
+            day_offsets = sorted((weekday - today) % 7 for weekday in weekdays)
+            nearest_day_offset = day_offsets[0] if day_offsets else 7
             return (
+                nearest_day_offset,
                 int(str(schedule['hour']).strip()),
                 int(str(schedule['minute']).strip()),
                 0 if schedule.get('action') == 'on' else 1,
             )
         except (ValueError, TypeError):
-            return (99, 99, 99)
+            return (99, 99, 99, 99)
 
     schedules.sort(key=sort_key)
     return schedules
@@ -208,26 +207,22 @@ def delete_schedule(schedule_id):
     schedules = extract_iptv_schedules(crontab)
     
     # 找到要删除的 schedule
-    target = None
-    for s in schedules:
-        if s['id'] == schedule_id:
-            target = s
-            break
+    target = next((s for s in schedules if s['id'] == schedule_id), None)
     
     if not target:
         return False
     
     _, managed_lines, _, _ = split_crontab_sections(crontab)
-    new_managed_lines = []
-    deleted = False
-    for line in managed_lines:
-        parsed = parse_crontab_line(line.strip())
-        if not deleted and parsed and parsed['id'] == schedule_id:
-            deleted = True
-            continue
-        new_managed_lines.append(line)
+    delete_index = int(schedule_id)
+    if delete_index < 0 or delete_index >= len(managed_lines):
+        return False
 
-    if not deleted:
+    new_managed_lines = [
+        line for index, line in enumerate(managed_lines)
+        if index != delete_index
+    ]
+
+    if len(new_managed_lines) == len(managed_lines):
         return False
 
     return set_crontab(replace_managed_block(crontab, new_managed_lines))
@@ -263,11 +258,7 @@ def toggle_schedule(schedule_id):
     crontab = get_crontab()
     schedules = extract_iptv_schedules(crontab)
     
-    target = None
-    for s in schedules:
-        if s['id'] == schedule_id:
-            target = s
-            break
+    target = next((s for s in schedules if s['id'] == schedule_id), None)
     
     if not target:
         return False
@@ -285,19 +276,12 @@ def toggle_schedule(schedule_id):
             new_line = old_line
 
     _, managed_lines, _, _ = split_crontab_sections(crontab)
-    replaced = []
-    toggled = False
-    for line in managed_lines:
-        parsed = parse_crontab_line(line.strip())
-        if not toggled and parsed and parsed['id'] == schedule_id:
-            replaced.append(new_line)
-            toggled = True
-        else:
-            replaced.append(line)
-
-    if not toggled:
+    toggle_index = int(schedule_id)
+    if toggle_index < 0 or toggle_index >= len(managed_lines):
         return False
 
+    replaced = managed_lines[:]
+    replaced[toggle_index] = new_line
     return set_crontab(replace_managed_block(crontab, replaced))
 
 
