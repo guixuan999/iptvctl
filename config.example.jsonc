@@ -1,0 +1,27 @@
+{
+  // 必填：目标机器上的 IPTV 网卡名
+  "interface": "eth3",
+
+  // 以下通常按目标系统实际命令路径确认后再改
+  "ip_command": "/sbin/ip",
+  "brctl_command": "/usr/sbin/brctl",
+  "python_command": "/usr/bin/python3",
+  "logger_command": "/usr/bin/logger",
+
+  // 可选：手动定时状态文件
+  "timer_state_file": "/tmp/iptv_manual_timer",
+
+  // 可选：超时与轮询参数
+  "command_timeout_seconds": 30,
+  "timer_poll_interval_seconds": 1,
+  "timer_cancel_join_timeout_seconds": 2,
+
+  // 可选：只在你要覆盖默认项目目录路径时再配置
+  // "timer_log_file": "/var/log/iptvctl/timer_log.txt",
+  // "check_off_script": "/opt/iptvctl/check_and_off.sh",
+  // "check_off_python_script": "/opt/iptvctl/check_and_off.py",
+
+  // 可选：crontab 托管区块标记
+  "crontab_marker_start": "# === IPTV SCHEDULE START ===",
+  "crontab_marker_end": "# === IPTV SCHEDULE END ==="
+}

@@ -19,9 +19,13 @@
 ```
 iptvctl/
 ├── app.py                 # Flask 后端
+├── settings.py            # 统一配置加载
+├── timer_manager.py       # 手动定时线程状态管理
 ├── crontab_manager.py     # crontab 管理模块
+├── check_and_off.py       # 配置化关闭检查逻辑
 ├── check_and_off.sh       # 关闭前检查脚本
 ├── requirements.txt       # Python 依赖
+├── config.json            # 项目配置
 ├── timer_log.txt          # 定时开启日志（自动生成）
 ├── templates/
 │   ├── index.html         # 主控制页面
@@ -83,6 +87,32 @@ python app.py
 ```
 
 访问 http://localhost:5000
+
+## 配置
+
+运行时读取的是项目根目录下的 `config.json`。
+
+最小部署配置：
+
+```json
+{
+  "interface": "eth3",
+  "ip_command": "/sbin/ip",
+  "brctl_command": "/usr/sbin/brctl",
+  "python_command": "/usr/bin/python3",
+  "logger_command": "/usr/bin/logger",
+  "timer_state_file": "/tmp/iptv_manual_timer",
+  "crontab_marker_start": "# === IPTV SCHEDULE START ===",
+  "crontab_marker_end": "# === IPTV SCHEDULE END ==="
+}
+```
+
+说明：
+
+- `interface` 是最关键的部署项，必须改成目标机器上的实际网卡名
+- 命令路径需要和目标机器保持一致；如果系统里 `ip`、`brctl`、`python3`、`logger` 路径不同，需要同步修改
+- `timer_log.txt`、`check_and_off.sh`、`check_and_off.py` 默认按项目目录推导，不需要写进 `config.json`
+- 如果你需要完整带注释的配置示例，可参考 `config.example.jsonc`
 
 ## 使用说明
 
@@ -162,5 +192,8 @@ sudo tail -f /var/log/syslog | grep IPTV
 - **前端**：原生 HTML/CSS/JavaScript
 - **定时任务**：系统 crontab + Python threading
 - **日志存储**：文本文件（记录实际 START/STOP 时间）
-- **冲突检测**：通过 `/tmp/iptv_manual_timer` 标志文件 + 线程停止标志实现
+- **配置化**：统一由 `config.json` 管理网卡名、命令路径、定时状态文件、crontab 标记等参数
+- **默认路径**：同级脚本和日志文件默认按项目目录推导，`config.json` 只需要覆盖非默认部署项
+- **crontab 管理**：仅维护 `# === IPTV SCHEDULE START ===` 和 `# === IPTV SCHEDULE END ===` 之间的托管区块
+- **冲突检测**：通过定时状态文件 + 带锁的 `TimerManager` 保证同一时刻只有一个手动定时任务
 - **主机名获取**：读取 `/proc/sys/kernel/hostname`

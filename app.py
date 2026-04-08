@@ -1,22 +1,14 @@
 from flask import Flask, render_template, jsonify, request
 import subprocess
-import os
-import re
-import threading
 import time
 from crontab_manager import (
     get_all_schedules, add_schedule, delete_schedule, 
-    update_schedule, toggle_schedule, get_next_schedule, get_next_schedule_by_action,
-    get_next_schedules
+    update_schedule, toggle_schedule, get_next_schedules
 )
+from settings import CONFIG
+from timer_manager import TimerManager
 
 app = Flask(__name__)
-
-# iptv 命令配置 - 直接执行系统命令
-IPTV_COMMANDS = {
-    'on': ['ip', 'link', 'set', 'eth3', 'up'],
-    'off': ['ip', 'link', 'set', 'eth3', 'down']
-}
 
 def get_hostname():
     """获取主机名"""
@@ -26,19 +18,11 @@ def get_hostname():
     except Exception:
         return 'unknown'
 
-# 定时关闭任务管理
-timer_thread = None
-timer_end_time = None
-timer_stop_flag = False  # 用于停止旧线程的标志
-
-# 日志文件路径
-LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'timer_log.txt')
-
 def log_timer_start():
     """记录定时开启的实际开始时间"""
     try:
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+        with open(CONFIG.timer_log_file, 'a', encoding='utf-8') as f:
             f.write(f"{timestamp} - START\n")
     except Exception as e:
         print(f"写入日志失败: {e}")
@@ -47,7 +31,7 @@ def log_timer_stop():
     """记录定时关闭的实际时间"""
     try:
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+        with open(CONFIG.timer_log_file, 'a', encoding='utf-8') as f:
             f.write(f"{timestamp} - STOP\n")
     except Exception as e:
         print(f"写入日志失败: {e}")
@@ -55,8 +39,8 @@ def log_timer_stop():
 def get_timer_logs():
     """获取所有定时开启日志"""
     try:
-        if os.path.exists(LOG_FILE):
-            with open(LOG_FILE, 'r', encoding='utf-8') as f:
+        if CONFIG.timer_log_file.exists():
+            with open(CONFIG.timer_log_file, 'r', encoding='utf-8') as f:
                 return f.read().strip().split('\n')
         return []
     except Exception as e:
@@ -66,20 +50,18 @@ def get_timer_logs():
 def run_status_command():
     """执行 status 命令（组合命令）"""
     try:
-        # 执行 ip link show eth3
         result1 = subprocess.run(
-            ['ip', 'link', 'show', 'eth3'],
+            CONFIG.status_command,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=CONFIG.command_timeout_seconds
         )
         
-        # 执行 brctl show（root 运行不需要 sudo）
         result2 = subprocess.run(
-            ['brctl', 'show'],
+            [CONFIG.brctl_command, 'show'],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=CONFIG.command_timeout_seconds
         )
         
         # 合并输出
@@ -118,7 +100,7 @@ def run_command(cmd):
             cmd,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=CONFIG.command_timeout_seconds
         )
         return {
             'success': result.returncode == 0,
@@ -144,11 +126,11 @@ def run_command(cmd):
 def parse_iptv_status(output):
     """
     解析 iptv-status 输出，判断 IPTV 状态
-    ON: eth3 包含 <...UP...>
-    OFF: eth3 不包含 UP
+    ON: 指定网卡包含 <...UP...>
+    OFF: 指定网卡不包含 UP
     """
     for line in output.split('\n'):
-        if 'eth3:' in line:
+        if f'{CONFIG.interface}:' in line:
             if 'UP' in line:
                 return 'on'
             else:
@@ -166,98 +148,27 @@ def get_current_status():
     print(f"Status command failed: {result['stderr']}")
     return 'unknown'
 
-def delayed_on_off(minutes):
-    """立即开启 IPTV，在指定分钟后关闭"""
-    global timer_end_time, timer_stop_flag
-    
-    # 重置停止标志
-    timer_stop_flag = False
-    
-    # 先执行开启
-    run_command(IPTV_COMMANDS['on'])
-    
-    # 记录实际开启时间
-    log_timer_start()
-    
-    # 设置定时关闭时间
-    timer_end_time = time.time() + minutes * 60
-    
-    # 创建标志文件，通知 schedule 跳过关闭
-    try:
-        with open('/tmp/iptv_manual_timer', 'w') as f:
-            f.write(str(timer_end_time))
-    except:
-        pass
-    
-    # 等待指定时间（每秒检查一次停止标志）
-    total_seconds = minutes * 60
-    for _ in range(total_seconds):
-        if timer_stop_flag:
-            # 被停止，不执行关闭
-            timer_end_time = None
-            try:
-                os.remove('/tmp/iptv_manual_timer')
-            except:
-                pass
-            return
-        time.sleep(1)
-    
-    # 时间到了，执行关闭
-    run_command(IPTV_COMMANDS['off'])
-    timer_end_time = None
-    
-    # 记录实际关闭时间
-    log_timer_stop()
-    
-    # 删除标志文件
-    try:
-        os.remove('/tmp/iptv_manual_timer')
-    except:
-        pass
+timer_manager = TimerManager(
+    config=CONFIG,
+    command_runner=run_command,
+    on_start=log_timer_start,
+    on_stop=log_timer_stop,
+)
 
 def get_timer_status():
     """获取定时关闭状态"""
-    global timer_end_time
-    if timer_end_time is None:
-        return None
-    
-    remaining = timer_end_time - time.time()
-    if remaining <= 0:
-        timer_end_time = None
-        return None
-    
-    return int(remaining)
+    return timer_manager.get_remaining()
 
 def cancel_timer():
     """取消定时关闭"""
-    global timer_thread, timer_end_time, timer_stop_flag
-    
-    # 删除标志文件
-    try:
-        os.remove('/tmp/iptv_manual_timer')
-    except:
-        pass
-    
-    if timer_thread and timer_thread.is_alive():
-        timer_stop_flag = True  # 通知线程停止
-        timer_thread.join(timeout=2)  # 等待线程结束（最多2秒）
-        timer_end_time = None
-        return True
-    timer_end_time = None
-    return False
+    return timer_manager.cancel()
 
 def should_skip_crontab_off():
     """
     检查是否应该跳过 crontab 的关闭操作
     如果手动定时关闭还在运行中，则跳过
     """
-    global timer_end_time
-    
-    if timer_end_time is not None:
-        remaining = timer_end_time - time.time()
-        if remaining > 0:
-            return True
-    return False
+    return timer_manager.should_skip_crontab_off()
 
 @app.route('/')
 def index():
@@ -311,21 +222,10 @@ def iptv_current_status():
 @app.route('/api/iptv/timer/<int:minutes>')
 def set_timer(minutes):
     """设置开启后定时关闭"""
-    global timer_thread, timer_end_time, timer_stop_flag
-    
     if minutes <= 0:
         return jsonify({'error': 'Invalid minutes'}), 400
-    
-    # 取消之前的定时器
-    if timer_thread and timer_thread.is_alive():
-        timer_stop_flag = True  # 通知旧线程停止
-        timer_thread.join(timeout=2)  # 等待旧线程结束（最多2秒）
-        timer_end_time = None
-    
-    # 创建新的定时器线程（先开启，后关闭）
-    timer_thread = threading.Thread(target=delayed_on_off, args=(minutes,))
-    timer_thread.daemon = True
-    timer_thread.start()
+
+    timer_manager.start(minutes)
     
     return jsonify({
         'success': True,
@@ -352,8 +252,6 @@ def get_logs_api():
 
 @app.route('/api/iptv/<action>')
 def iptv_control(action):
-    global timer_thread, timer_end_time
-    
     if action == 'status':
         result = run_status_command()
         if result['success']:
@@ -367,7 +265,7 @@ def iptv_control(action):
     if action == 'off':
         cancel_timer()
     
-    result = run_command(IPTV_COMMANDS[action])
+    result = run_command(CONFIG.iptv_commands[action])
     return jsonify(result)
 
 # ==================== Schedule API ====================
@@ -395,11 +293,9 @@ def create_schedule():
     
     # 构建命令（关闭操作会使用检查脚本）
     if schedule['action'] == 'on':
-        schedule['command'] = '/sbin/ip link set eth3 up && /usr/bin/logger "IPTV RESTORED: web schedule"'
+        schedule['command'] = CONFIG.schedule_on_command
     else:
-        import os
-        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'check_and_off.sh')
-        schedule['command'] = script_path
+        schedule['command'] = str(CONFIG.check_off_script)
     
     if add_schedule(schedule):
         return jsonify({'success': True})

@@ -2,13 +2,12 @@
 Crontab 管理模块 - 用于管理 IPTV 的定时开关规则
 """
 import subprocess
-import re
-import json
-import os
+import hashlib
 from datetime import datetime, timedelta
+from settings import CONFIG
 
-CRONTAB_MARKER_START = "# === IPTV SCHEDULE START ==="
-CRONTAB_MARKER_END = "# === IPTV SCHEDULE END ==="
+CRONTAB_MARKER_START = CONFIG.crontab_marker_start
+CRONTAB_MARKER_END = CONFIG.crontab_marker_end
 
 
 def get_crontab():
@@ -45,23 +44,75 @@ def set_crontab(content):
         return False
 
 
+def split_crontab_sections(crontab_content):
+    """拆分托管区块和其他 crontab 内容"""
+    lines = crontab_content.splitlines()
+    before = []
+    managed = []
+    after = []
+    in_managed_block = False
+    managed_found = False
+
+    for line in lines:
+        if line.strip() == CRONTAB_MARKER_START:
+            managed_found = True
+            in_managed_block = True
+            continue
+        if line.strip() == CRONTAB_MARKER_END:
+            in_managed_block = False
+            continue
+
+        if in_managed_block:
+            managed.append(line)
+        elif managed_found:
+            after.append(line)
+        else:
+            before.append(line)
+
+    return before, managed, after, managed_found
+
+
+def replace_managed_block(crontab_content, managed_lines):
+    """只替换 IPTV 托管区块，保留其他 crontab 内容"""
+    before, _, after, managed_found = split_crontab_sections(crontab_content)
+    output = []
+
+    if before:
+        output.extend(before)
+
+    if managed_lines:
+        if output and output[-1] != "":
+            output.append("")
+        output.append(CRONTAB_MARKER_START)
+        output.extend(managed_lines)
+        output.append(CRONTAB_MARKER_END)
+
+    if after:
+        if output and output[-1] != "":
+            output.append("")
+        output.extend(after)
+
+    if managed_found and not managed_lines and output and output[-1] == "":
+        output.pop()
+
+    content = "\n".join(output).rstrip()
+    return f"{content}\n" if content else ""
+
+
 def extract_iptv_schedules(crontab_content):
-    """从 crontab 内容中提取 IPTV schedule（读取所有包含 ip link set eth3 或 check_and_off.sh 的规则）"""
+    """从 crontab 托管区块中提取 IPTV schedule"""
     schedules = []
-    
-    for line in crontab_content.split('\n'):
+
+    _, managed_lines, _, _ = split_crontab_sections(crontab_content)
+
+    for line in managed_lines:
         line = line.strip()
-        # 跳过空行和纯注释行（但不是被禁用的规则）
         if not line:
             continue
-        
-        # 检查是否包含 IPTV 相关命令（包括开启、关闭和检查脚本）
-        clean_line = line.replace('#', '').strip()
-        if 'ip link set eth3' in line or 'ip link set eth3' in clean_line or \
-           'check_and_off.sh' in line or 'check_and_off.sh' in clean_line:
-            schedule = parse_crontab_line(line)
-            if schedule:
-                schedules.append(schedule)
+
+        schedule = parse_crontab_line(line)
+        if schedule:
+            schedules.append(schedule)
     
     return schedules
 
@@ -93,7 +144,7 @@ def parse_crontab_line(line):
         action = 'off'
     
     return {
-        'id': hash(line) & 0x7FFFFFFF,  # 生成唯一ID
+        'id': stable_schedule_id(clean_line),
         'minute': minute,
         'hour': hour,
         'day': day,
@@ -106,19 +157,17 @@ def parse_crontab_line(line):
     }
 
 
-def get_script_dir():
-    """获取脚本所在目录"""
-    return os.path.dirname(os.path.abspath(__file__))
+def stable_schedule_id(line):
+    digest = hashlib.sha1(line.encode('utf-8')).hexdigest()[:12]
+    return int(digest, 16)
 
 
 def build_crontab_line(schedule):
     """从 schedule 字典构建 crontab 行"""
-    # 如果是关闭操作，使用检查脚本（使用绝对路径）
     if schedule.get('action') == 'off':
-        script_path = os.path.join(get_script_dir(), 'check_and_off.sh')
-        command = script_path
+        command = str(CONFIG.check_off_script)
     else:
-        command = schedule.get('command', '/sbin/ip link set eth3 up')
+        command = schedule.get('command', CONFIG.schedule_on_command)
     
     line = f"{schedule['minute']} {schedule['hour']} {schedule['day']} {schedule['month']} {schedule['weekday']} {command}"
     if not schedule.get('enabled', True):
@@ -153,14 +202,9 @@ def get_all_schedules():
 def add_schedule(schedule):
     """添加新的 schedule 到 crontab"""
     crontab = get_crontab()
-    
-    # 添加新规则到文件末尾
-    new_line = build_crontab_line(schedule)
-    if crontab and not crontab.endswith('\n'):
-        crontab += '\n'
-    crontab += new_line + '\n'
-    
-    return set_crontab(crontab)
+    _, managed_lines, _, _ = split_crontab_sections(crontab)
+    managed_lines.append(build_crontab_line(schedule))
+    return set_crontab(replace_managed_block(crontab, managed_lines))
 
 
 def delete_schedule(schedule_id):
@@ -178,14 +222,9 @@ def delete_schedule(schedule_id):
     if not target:
         return False
     
-    # 从 crontab 中移除该行
-    lines = crontab.split('\n')
-    new_lines = []
-    for line in lines:
-        if target['raw'] not in line:
-            new_lines.append(line)
-    
-    return set_crontab('\n'.join(new_lines))
+    _, managed_lines, _, _ = split_crontab_sections(crontab)
+    new_managed_lines = [line for line in managed_lines if line != target['raw']]
+    return set_crontab(replace_managed_block(crontab, new_managed_lines))
 
 
 def update_schedule(schedule_id, updates):
@@ -206,10 +245,9 @@ def update_schedule(schedule_id, updates):
     
     # 构建命令（关闭操作会使用检查脚本）
     if new_schedule['action'] == 'on':
-        new_schedule['command'] = '/sbin/ip link set eth3 up && /usr/bin/logger "IPTV RESTORED: manual schedule"'
+        new_schedule['command'] = CONFIG.schedule_on_command
     else:
-        script_path = os.path.join(get_script_dir(), 'check_and_off.sh')
-        new_schedule['command'] = script_path
+        new_schedule['command'] = str(CONFIG.check_off_script)
     
     return add_schedule(new_schedule)
 
@@ -231,20 +269,18 @@ def toggle_schedule(schedule_id):
     # 切换状态
     target['enabled'] = not target['enabled']
     
-    # 替换 crontab 中的行 - 直接在原行前面加或去掉 #
     old_line = target['raw']
     if target['enabled']:
-        # 启用：去掉前面的 #
         new_line = old_line.lstrip('# ')
     else:
-        # 禁用：在前面加 #
         if not old_line.strip().startswith('#'):
             new_line = f"# {old_line}"
         else:
             new_line = old_line
-    
-    crontab = crontab.replace(old_line, new_line)
-    return set_crontab(crontab)
+
+    _, managed_lines, _, _ = split_crontab_sections(crontab)
+    replaced = [new_line if line == old_line else line for line in managed_lines]
+    return set_crontab(replace_managed_block(crontab, replaced))
 
 
 def get_next_schedule():
@@ -349,17 +385,3 @@ def cron_to_python_weekday(cron_wd):
         return 6  # 周日 -> 6
     else:
         return cron_wd - 1  # 周一到周六 -> 0到5
-
-
-def should_skip_crontab_off():
-    """
-    检查是否应该跳过 crontab 的关闭操作
-    如果手动定时关闭还在运行中，则跳过
-    """
-    from app import timer_end_time
-    
-    if timer_end_time is not None:
-        remaining = timer_end_time - time.time()
-        if remaining > 0:
-            return True
-    return False

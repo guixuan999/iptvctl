@@ -1,0 +1,13 @@
+{
+  "interface": "eth3",
+  "ip_command": "/sbin/ip",
+  "brctl_command": "/usr/sbin/brctl",
+  "python_command": "/usr/bin/python3",
+  "logger_command": "/usr/bin/logger",
+  "command_timeout_seconds": 30,
+  "timer_poll_interval_seconds": 1,
+  "timer_cancel_join_timeout_seconds": 2,
+  "timer_state_file": "/tmp/iptv_manual_timer",
+  "crontab_marker_start": "# === IPTV SCHEDULE START ===",
+  "crontab_marker_end": "# === IPTV SCHEDULE END ==="
+}
